@@ -179,3 +179,54 @@ def compare_headers(hdr1, hdr2):
             assert hdr1[key] == hdr2[key]
         except:
             raise ValueError("Headers do not match on key %s"%key)
+
+@jit(nopython=True, nogil=True, cache=True)
+def compute_wsums_band(uvw, weights, freqs, nx, ny, cell_size_x, cell_size_y, dtype):
+    # get u coordinates of the grid 
+    umax = 1.0/cell_size_x
+    # get end points
+    ug = np.linspace(-umax, umax, nx + 1)[1::]
+    # get v coordinates of the grid
+    vmax = 1.0/cell_size_y
+    # get end points
+    vg = np.linspace(-vmax, vmax, ny + 1)[1::]
+    # initialise array to store counts
+    counts = np.zeros((nx, ny), dtype=dtype)
+    # accumulate counts
+    nchan = freqs.size
+    nrow = uvw.shape[0]
+    for r in range(nrow):
+        for c in range(nchan):
+            # get current uv coords
+            u_tmp, v_tmp = uvw[r, 0:2] * freqs[c] / lightspeed
+            # get u index
+            u_idx = (ug < u_tmp).nonzero()[0][-1]
+            # get v index
+            v_idx = (vg < v_tmp).nonzero()[0][-1]
+            counts[u_idx, v_idx] += weights[r, c]
+    return counts
+
+@jit(nopython=True, nogil=True, cache=True)
+def wsums_to_weights_band(wsums, uvw, freqs, nx, ny, cell_size_x, cell_size_y, dtype):
+    # get u coordinates of the grid 
+    umax = 1.0/cell_size_x
+    # get end points
+    ug = np.linspace(-umax, umax, nx + 1)[1::]
+    # get v coordinates of the grid
+    vmax = 1.0/cell_size_y
+    # get end points
+    vg = np.linspace(-vmax, vmax, ny + 1)[1::]
+    nchan = freqs.size
+    nrow = uvw.shape[0]
+    # initialise array to store weights
+    weights = np.zeros((nrow, nchan), dtype=dtype)
+    for r in range(nrow):
+        for c in range(nchan):
+            # get current uv
+            u_tmp, v_tmp = uvw[r, 0:2] * freqs[c] / lightspeed
+            # get u index
+            u_idx = (ug < u_tmp).nonzero()[0][-1]
+            # get v index
+            v_idx = (vg < v_tmp).nonzero()[0][-1]
+            weights[r, c] = 1.0/wsums[u_idx, v_idx]
+    return weights
