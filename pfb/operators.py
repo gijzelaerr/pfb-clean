@@ -4,7 +4,7 @@ from daskms import xds_from_table
 import pywt
 import nifty_gridder as ng
 from pypocketfft import r2c, c2r
-from pfb.utils import freqmul
+from pfb.utils import freqmul, compute_wsums_band, wsums_to_weights_band
 from africanus.gps.kernels import exponential_squared as expsq
 iFs = np.fft.ifftshift
 Fs = np.fft.fftshift
@@ -75,7 +75,7 @@ class Gridder(object):
 
 class OutMemGridder(object):
     def __init__(self, table_name, nx, ny, cell_size, freq, nband=None, field=0, precision=1e-7, ncpu=8, do_wstacking=1,
-                 data_column='DATA', weight_column='IMAGING_WEIGHT'):
+                 data_column='DATA', weight_column='IMAGING_WEIGHT', write_uniform=False):
         if precision > 1e-6:
             self.real_type = np.float32
             self.complex_type = np.complex64
@@ -120,7 +120,8 @@ class OutMemGridder(object):
             data_column: {'dims': ('chan',)},
             weight_column: {'dims': ('chan', )},
             "UVW": {'dims': ('uvw',)},
-        }
+            'WEIGHT': {'dims': ('chan', )},
+        }   
         
     def make_residual(self, x, v_dof=None):
         print("Making residual")
@@ -179,6 +180,35 @@ class OutMemGridder(object):
                                             epsilon=self.precision, nthreads=self.nthreads, do_wstacking=self.do_wstacking, verbosity=0)
         return dirty
 
+    def make_uniform_dirty(self):
+        print("Making uniform dirty")
+        dirty = np.zeros((self.nband, self.nx, self.ny), dtype=self.real_type)
+        xds = xds_from_table(self.table_name, group_cols=('FIELD_ID'), chunks={"row":-1, "chan": self.chan_chunks}, table_schema=self.schema)
+        for ds in xds:
+            if ds.FIELD_ID not in list(self.field):
+                continue
+            print("Processing field %i"%ds.FIELD_ID)
+            data = getattr(ds, self.data_column).data
+            weights = getattr(ds, 'WEIGHT').data
+            uvw = ds.UVW.data.compute().astype(self.real_type)
+        
+            for i in range(self.nband):
+                Ilow = self.freq_mapping[i]
+                Ihigh = self.freq_mapping[i+1]
+                weighti = weights.blocks[:, i].compute().astype(self.real_type)
+                freqi = self.freq[Ilow:Ihigh]
+
+                datai = data.blocks[:, i].compute().astype(self.complex_type)
+
+                # TODO - load and apply interpolated fits beam patterns for field
+                if weighti.any():
+                    wsums = compute_wsums_band(uvw, weighti, freqi, self.nx, self.ny, self.cell, self.cell, self.real_type)
+                    uniform_weighti = np.sqrt(wsums_to_weights_band(wsums, uvw, freqi, self.nx, self.ny, self.cell, self.cell, self.real_type))
+                    dirty[i] += ng.ms2dirty(uvw=uvw, freq=freqi, ms=uniform_weighti*datai, wgt=uniform_weighti,
+                                            npix_x=self.nx, npix_y=self.ny, pixsize_x=self.cell, pixsize_y=self.cell,
+                                            epsilon=self.precision, nthreads=self.nthreads, do_wstacking=self.do_wstacking, verbosity=0)
+        return dirty
+
     def make_psf(self):
         print("Making PSF")
         psf_array = np.zeros((self.nband, 2*self.nx, 2*self.ny))
@@ -197,6 +227,31 @@ class OutMemGridder(object):
 
                 if weighti.any():
                     psf_array[i] += ng.ms2dirty(uvw=uvw, freq=self.freq[Ilow:Ihigh], ms=weighti.astype(self.complex_type), wgt=weighti,
+                                                npix_x=2*self.nx, npix_y=2*self.ny, pixsize_x=self.cell, pixsize_y=self.cell,
+                                                epsilon=self.precision, nthreads=self.nthreads, do_wstacking=self.do_wstacking)
+        return psf_array
+
+    def make_uniform_psf(self):
+        print("Making uniform PSF")
+        psf_array = np.zeros((self.nband, 2*self.nx, 2*self.ny))
+        xds = xds_from_table(self.table_name, group_cols=('FIELD_ID'), chunks={"row":-1, "chan": self.chan_chunks}, table_schema=self.schema)
+        for ds in xds:
+            if ds.FIELD_ID not in list(self.field):
+                continue
+            print("Processing field %i"%ds.FIELD_ID)
+            weights = getattr(ds, 'WEIGHT').data
+            uvw = ds.UVW.data.compute().astype(self.real_type)
+        
+            for i in range(self.nband):
+                Ilow = self.freq_mapping[i]
+                Ihigh = self.freq_mapping[i+1]
+                weighti = weights.blocks[:, i].compute().astype(self.real_type)
+                freqi = self.freq[Ilow:Ihigh]
+
+                if weighti.any():
+                    wsums = compute_wsums_band(uvw, weighti, freqi, self.nx, self.ny, self.cell, self.cell, self.real_type)
+                    uniform_weighti = np.sqrt(wsums_to_weights_band(wsums, uvw, freqi, self.nx, self.ny, self.cell, self.cell, self.real_type))
+                    psf_array[i] += ng.ms2dirty(uvw=uvw, freq=freqi, ms=uniform_weighti.astype(self.complex_type), wgt=uniform_weighti,
                                                 npix_x=2*self.nx, npix_y=2*self.ny, pixsize_x=self.cell, pixsize_y=self.cell,
                                                 epsilon=self.precision, nthreads=self.nthreads, do_wstacking=self.do_wstacking)
         return psf_array

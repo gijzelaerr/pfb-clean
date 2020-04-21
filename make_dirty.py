@@ -38,6 +38,10 @@ def create_parser():
     p.add_argument("--field", type=int, default=0, nargs='+',
                    help="Which fields to image")
     p.add_argument("--ncpu", type=int, default=0)
+    p.add_argument("--write_natural", type=str2bool, nargs='?', const=True, default=True,
+                   help="Create naturally weighted dirty image and psf.")
+    p.add_argument("--write_uniform", type=str2bool, nargs='?', const=True, default=False,
+                   help="Also create uniformly weighted dirty image and psf.")
     return p
 
 def main(args):
@@ -105,28 +109,52 @@ def main(args):
     hdr_psf_mfs = set_wcs(args.cell_size/3600, args.cell_size/3600, 2*args.nx, 2*args.ny, radec, np.mean(freq_out))
     
     # make psf  LB - TODO: undersized psfs
-    psf= R.make_psf()
     nband = R.nband
-    psf_max = np.amax(psf.reshape(nband, 4*args.nx*args.ny), axis=1)
+    if args.write_natural:
+        psf= R.make_psf()
+        psf_max = np.amax(psf.reshape(nband, 4*args.nx*args.ny), axis=1)
 
-    # make dirty
-    dirty = R.make_dirty()
+        # make dirty
+        dirty = R.make_dirty()
 
-    # save dirty and psf images
-    save_fits(args.outfile + '_dirty.fits', dirty, hdr, dtype=real_type)
-    save_fits(args.outfile + '_psf.fits', psf, hdr_psf, dtype=real_type)
-    
-    # MFS images
-    wsum = np.sum(psf_max)
-    dirty_mfs = np.sum(dirty, axis=0)/wsum 
-    save_fits(args.outfile + '_dirty_mfs.fits', dirty_mfs, hdr_mfs)
+        # save dirty and psf images
+        save_fits(args.outfile + '_dirty.fits', dirty, hdr, dtype=real_type)
+        save_fits(args.outfile + '_psf.fits', psf, hdr_psf, dtype=real_type)
+        
+        # MFS images
+        wsum = np.sum(psf_max)
+        dirty_mfs = np.sum(dirty, axis=0)/wsum 
+        save_fits(args.outfile + '_dirty_mfs.fits', dirty_mfs, hdr_mfs)
 
-    psf_mfs = np.sum(psf, axis=0)/wsum
-    save_fits(args.outfile + '_psf_mfs.fits', psf_mfs, hdr_psf_mfs)
+        psf_mfs = np.sum(psf, axis=0)/wsum
+        save_fits(args.outfile + '_psf_mfs.fits', psf_mfs, hdr_psf_mfs)
 
-    rmax = np.abs(dirty_mfs).max()
-    rms = np.std(dirty_mfs)
-    print("Peak of dirty is %f and rms is %f"%(rmax, rms))       
+        rmax = np.abs(dirty_mfs).max()
+        rms = np.std(dirty_mfs)
+        print("Peak of dirty is %f and rms is %f"%(rmax, rms))   
+
+    if args.write_uniform:
+        psf= R.make_uniform_psf()
+        psf_max = np.amax(psf.reshape(nband, 4*args.nx*args.ny), axis=1)
+
+        # make dirty
+        dirty = R.make_uniform_dirty()
+
+        # save dirty and psf images
+        save_fits(args.outfile + '_uniform_dirty.fits', dirty, hdr, dtype=real_type)
+        save_fits(args.outfile + '_uniform_psf.fits', psf, hdr_psf, dtype=real_type)
+        
+        # MFS images
+        wsum = np.sum(psf_max)
+        dirty_mfs = np.sum(dirty, axis=0)/wsum 
+        save_fits(args.outfile + '_uniform_dirty_mfs.fits', dirty_mfs, hdr_mfs)
+
+        psf_mfs = np.sum(psf, axis=0)/wsum
+        save_fits(args.outfile + '_uniform_psf_mfs.fits', psf_mfs, hdr_psf_mfs)
+
+        rmax = np.abs(dirty_mfs).max()
+        rms = np.std(dirty_mfs)
+        print("Peak of uniformly weighted dirty is %f and rms is %f"%(rmax, rms))
 
 
 if __name__=="__main__":

@@ -5,6 +5,7 @@ from scipy.optimize import fmin_l_bfgs_b
 from scipy.linalg import norm
 import dask
 import dask.array as da
+from africanus.constants import c as lightspeed
 from daskms import xds_from_ms, xds_from_table, xds_to_table, Dataset
 from pyrap.tables import table
 from numpy.testing import assert_array_equal
@@ -40,7 +41,7 @@ def save_fits(name, data, hdr, overwrite=True, dtype=np.float32):
     hdu.writeto(name, overwrite=overwrite)
 
 
-@njit(parallel=True, nogil=True, fastmath=True, inline='always')
+@njit(parallel=True, nogil=True, fastmath=True, inline='always', cache=True)
 def freqmul(A, x):
     nchan, npix = x.shape
     out = np.zeros((nchan, npix), dtype=x.dtype)
@@ -180,7 +181,7 @@ def compare_headers(hdr1, hdr2):
         except:
             raise ValueError("Headers do not match on key %s"%key)
 
-@jit(nopython=True, nogil=True, cache=True)
+@njit(nogil=True, fastmath=True, cache=True)
 def compute_wsums_band(uvw, weights, freqs, nx, ny, cell_size_x, cell_size_y, dtype):
     # get u coordinates of the grid 
     umax = 1.0/cell_size_x
@@ -206,7 +207,7 @@ def compute_wsums_band(uvw, weights, freqs, nx, ny, cell_size_x, cell_size_y, dt
             counts[u_idx, v_idx] += weights[r, c]
     return counts
 
-@jit(nopython=True, nogil=True, cache=True)
+@njit(nogil=True, fastmath=True, cache=True)
 def wsums_to_weights_band(wsums, uvw, freqs, nx, ny, cell_size_x, cell_size_y, dtype):
     # get u coordinates of the grid 
     umax = 1.0/cell_size_x
