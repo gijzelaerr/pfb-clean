@@ -229,5 +229,6 @@ def wsums_to_weights_band(wsums, uvw, freqs, nx, ny, cell_size_x, cell_size_y, d
             u_idx = (ug < u_tmp).nonzero()[0][-1]
             # get v index
             v_idx = (vg < v_tmp).nonzero()[0][-1]
-            weights[r, c] = 1.0/wsums[u_idx, v_idx]
+            if wsums[u_idx, v_idx]:
+                weights[r, c] = 1.0/wsums[u_idx, v_idx]
     return weights
