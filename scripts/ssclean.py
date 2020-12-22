@@ -22,14 +22,14 @@ def create_parser():
                    help="The column to image.")
     p.add_argument("--weight_column", default='WEIGHT_SPECTRUM', type=str,
                    help="Weight column to use.")
-    p.add_argument("--imaging_weight_column", default=None, type=str,
+    p.add_argument("--imaging_weight_column", default='IMAGING_WEIGHT_SPECTRUM', type=str,
                    help="Weight column to use.")
     p.add_argument("--model_column", default='MODEL_DATA', type=str,
                    help="Column to write model data to")
     p.add_argument("--flag_column", default='FLAG', type=str)
     p.add_argument("--row_chunks", default=100000, type=int,
                    help="Rows per chunk")
-    p.add_argument("--chan_chunks", default=8, type=int,
+    p.add_argument("--chan_chunks", default=32, type=int,
                    help="Channels per chunk (only used for writing component model")
     p.add_argument("--write_model", type=str2bool, nargs='?', const=True, default=True,
                    help="Whether to write model visibilities to model_column")
@@ -154,7 +154,7 @@ def main(args):
 
     # init gridder
     R = Gridder(args.ms, args.nx, args.ny, args.cell_size, nband=args.nband, nthreads=args.nthreads,
-                do_wstacking=args.do_wstacking, row_chunks=args.row_chunks, optimise_chunks=True,
+                do_wstacking=args.do_wstacking, row_chunks=args.row_chunks, chan_chunks=args.chan_chunks, optimise_chunks=True,
                 data_column=args.data_column, weight_column=args.weight_column, imaging_weight_column=args.imaging_weight_column,
                 model_column=args.model_column, flag_column=args.flag_column)
     freq_out = R.freq_out

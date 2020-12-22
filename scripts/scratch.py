@@ -1,8 +1,8 @@
 
 import numpy as np
-from pfb.operators import Dirac, PSF, Prior
+from pfb.operators import Dirac, PSF, Gridder
 from pfb.opt import pcg
-from ducc0.wgridder import ms2dirty, dirty2ms
+#from ducc0.wgridder import ms2dirty, dirty2ms
 import matplotlib.pyplot as plt
 from africanus.constants import c as lightspeed
 import pywt
@@ -45,42 +45,80 @@ def M_func(x, A, sig_b):
     
 
 if __name__=="__main__":
-    nrow = 100000
-    uvw = np.random.randn(nrow, 3)
-    uvw[:, 2] = 0.0
 
-    u_max = abs(uvw[:, 0]).max()
-    v_max = abs(uvw[:, 1]).max()
-    uv_max = np.maximum(u_max, v_max)
+    ms = ['/home/landman/Data/pfb-testing/MS/point_gauss_nb.MS_p0']
+    nx = 512
+    ny = 512
+    cell_size = 10.0
+    nband = 4
+    R_uni = Gridder(ms, nx, ny, cell_size, nband=nband, nthreads=1,
+                    do_wstacking=1, row_chunks=100000, chan_chunks=8,
+                    data_column='DATA', weight_column='WEIGHT',
+                    epsilon=1e-4, imaging_weight_column='IMAGING_WEIGHT_SPECTRUM',
+                    model_column='MODEL_DATA', flag_column='FLAG')
 
-    cell = 0.9/(2*uv_max)
+    R_uni.compute_weights()
 
-    freq = np.array([lightspeed])
+    R_nat = Gridder(ms, nx, ny, cell_size, nband=nband, nthreads=1,
+                    do_wstacking=1, row_chunks=100000, chan_chunks=8,
+                    data_column='DATA', weight_column='WEIGHT',
+                    epsilon=1e-4, imaging_weight_column=None,
+                    model_column='MODEL_DATA', flag_column='FLAG')
 
-    model = np.zeros((nband, nx, ny))
-    npoints = 10
-    Ix = np.random.randint(0, nx, npoints)
-    Iy = np.random.randint(0, ny, npoints)
-    model[:, Ix, Iy] = np.abs(1.0 + np.random.randn(npoints))
-    mask = np.zeros((nx, ny))
-    mask[Ix, Iy] = 1.0
-
-    xx, yy = np.meshgrid(np.arange(nx), np.arange(ny))
-    locs = ((nx//4, ny//4), (nx//2, ny//2), (3*nx//4, ny//4), (nx//4, 3*ny//4), (3*nx//4, 3*ny//4))
     
-    for loc in locs: 
-        model += np.exp(-(xx-loc[0])**2/15**2 - (yy-loc[1])**2/15**2)[None, :, :]
+
+    dirtyu = R_uni.make_dirty()
+    dirtyn = R_nat.make_dirty()
+
+    for b in range(nband):
+        plt.figure('u')
+        plt.imshow(dirtyu[b])
+        plt.colorbar()
+        plt.figure('n')
+        plt.imshow(dirtyn[b])
+        plt.colorbar()
+        plt.show()
+    # nrow = 100000
+    # uvw = np.random.randn(nrow, 3)
+    # uvw[:, 2] = 0.0
+
+    # u_max = abs(uvw[:, 0]).max()
+    # v_max = abs(uvw[:, 1]).max()
+    # uv_max = np.maximum(u_max, v_max)
+
+    # cell = 0.9/(2*uv_max)
+
+    # freq = np.array([lightspeed])
 
 
-    vis = dirty2ms(uvw=uvw, freq=freq, dirty=model[0], pixsize_x=cell, pixsize_y=cell, epsilon=1e-7, do_wstacking=False, nthreads=8)
-    noise = np.random.randn(nrow, 1)/np.sqrt(2) + 1.0j*np.random.randn(nrow, 1)/np.sqrt(2)
 
-    data = vis + noise
+    
+    
+    
+    # model = np.zeros((nband, nx, ny))
+    # npoints = 10
+    # Ix = np.random.randint(0, nx, npoints)
+    # Iy = np.random.randint(0, ny, npoints)
+    # model[:, Ix, Iy] = np.abs(1.0 + np.random.randn(npoints))
+    # mask = np.zeros((nx, ny))
+    # mask[Ix, Iy] = 1.0
 
-    dirty = ms2dirty(uvw=uvw, freq=freq, ms=data, npix_x=nx, npix_y=ny, pixsize_x=cell, pixsize_y=cell, epsilon=1e-7, do_wstacking=False, nthreads=8)[None, :, :]
+    # xx, yy = np.meshgrid(np.arange(nx), np.arange(ny))
+    # locs = ((nx//4, ny//4), (nx//2, ny//2), (3*nx//4, ny//4), (nx//4, 3*ny//4), (3*nx//4, 3*ny//4))
+    
+    # for loc in locs: 
+    #     model += np.exp(-(xx-loc[0])**2/15**2 - (yy-loc[1])**2/15**2)[None, :, :]
 
-    psf_array = ms2dirty(uvw=uvw, freq=freq, ms=np.ones(data.shape, dtype=np.complex128),
-                         npix_x=2*nx, npix_y=2*ny, pixsize_x=cell, pixsize_y=cell, epsilon=1e-7, do_wstacking=False, nthreads=8)[None, :, :]
+
+    # vis = dirty2ms(uvw=uvw, freq=freq, dirty=model[0], pixsize_x=cell, pixsize_y=cell, epsilon=1e-7, do_wstacking=False, nthreads=8)
+    # noise = np.random.randn(nrow, 1)/np.sqrt(2) + 1.0j*np.random.randn(nrow, 1)/np.sqrt(2)
+
+    # data = vis + noise
+
+    # dirty = ms2dirty(uvw=uvw, freq=freq, ms=data, npix_x=nx, npix_y=ny, pixsize_x=cell, pixsize_y=cell, epsilon=1e-7, do_wstacking=False, nthreads=8)[None, :, :]
+
+    # psf_array = ms2dirty(uvw=uvw, freq=freq, ms=np.ones(data.shape, dtype=np.complex128),
+    #                      npix_x=2*nx, npix_y=2*ny, pixsize_x=cell, pixsize_y=cell, epsilon=1e-7, do_wstacking=False, nthreads=8)[None, :, :]
 
     # plt.figure('dirty')
     # plt.imshow(dirty[0])
@@ -92,43 +130,43 @@ if __name__=="__main__":
 
     # plt.show()
 
-    psf = PSF(psf_array, 8)
+    # psf = PSF(psf_array, 8)
 
-    A = Prior(1.0, nband, nx, ny)
+    # A = Prior(1.0, nband, nx, ny)
 
-    H = Dirac(nband, nx, ny, mask=mask)
+    # H = Dirac(nband, nx, ny, mask=mask)
 
-    psi = lambda y:psi_func(y, H)
-    psih = lambda x:psih_func(x, H)
+    # psi = lambda y:psi_func(y, H)
+    # psih = lambda x:psih_func(x, H)
 
-    sig_b = 5.0
+    # sig_b = 5.0
 
-    hess = lambda x:hess_func(x, A, psf, psi, psih, sig_b)
+    # hess = lambda x:hess_func(x, A, psf, psi, psih, sig_b)
 
-    augmented_dirty = psih(dirty)
-    print(augmented_dirty.shape)
-    M = lambda x:M_func(x, A, sig_b)
-    x = pcg(hess, augmented_dirty, np.zeros(augmented_dirty.shape), M=M, tol=1e-7, maxit=100, verbosity=1)
+    # augmented_dirty = psih(dirty)
+    # print(augmented_dirty.shape)
+    # M = lambda x:M_func(x, A, sig_b)
+    # x = pcg(hess, augmented_dirty, np.zeros(augmented_dirty.shape), M=M, tol=1e-7, maxit=100, verbosity=1)
 
-    model_rec = psi(x)
+    # model_rec = psi(x)
 
-    plt.figure('rec')
-    plt.imshow(model_rec[0], vmin=-0.1, vmax=2)
-    plt.colorbar()
+    # plt.figure('rec')
+    # plt.imshow(model_rec[0], vmin=-0.1, vmax=2)
+    # plt.colorbar()
 
-    plt.figure('model')
-    plt.imshow(model[0], vmin=-0.1, vmax=2)
-    plt.colorbar()
+    # plt.figure('model')
+    # plt.imshow(model[0], vmin=-0.1, vmax=2)
+    # plt.colorbar()
 
-    # get normal Wiener filter solution
-    def hess(x):
-        return psf.convolve(x) + A.idot(x)
+    # # get normal Wiener filter solution
+    # def hess(x):
+    #     return psf.convolve(x) + A.idot(x)
 
-    x = pcg(hess, dirty, np.zeros(dirty.shape), M=A.dot, tol=1e-7, maxit=100, verbosity=1)
+    # x = pcg(hess, dirty, np.zeros(dirty.shape), M=A.dot, tol=1e-7, maxit=100, verbosity=1)
 
-    plt.figure('wiener')
-    plt.imshow(x[0], vmin=-0.1, vmax=2)
-    plt.colorbar()
+    # plt.figure('wiener')
+    # plt.imshow(x[0], vmin=-0.1, vmax=2)
+    # plt.colorbar()
 
 
     # # filter with mexican hat wavelet
