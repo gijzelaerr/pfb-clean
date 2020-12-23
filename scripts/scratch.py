@@ -50,32 +50,75 @@ if __name__=="__main__":
     nx = 512
     ny = 512
     cell_size = 10.0
-    nband = 4
+    nband = 1
     R_uni = Gridder(ms, nx, ny, cell_size, nband=nband, nthreads=1,
                     do_wstacking=1, row_chunks=100000, chan_chunks=8,
                     data_column='DATA', weight_column='WEIGHT',
                     epsilon=1e-4, imaging_weight_column='IMAGING_WEIGHT_SPECTRUM',
                     model_column='MODEL_DATA', flag_column='FLAG')
 
-    R_uni.compute_weights()
+    counts = R_uni.compute_weights().squeeze()
 
-    R_nat = Gridder(ms, nx, ny, cell_size, nband=nband, nthreads=1,
-                    do_wstacking=1, row_chunks=100000, chan_chunks=8,
-                    data_column='DATA', weight_column='WEIGHT',
-                    epsilon=1e-4, imaging_weight_column=None,
-                    model_column='MODEL_DATA', flag_column='FLAG')
+    from pyrap.tables import table
+
+    ms = table(ms[0])
+    uvw = ms.getcol('UVW')
+
+    cell_rad = np.deg2rad(cell_size/3600)
+
+    umax = 1/(2*cell_rad)
+    u_diff = 1/(nx*cell_rad)
+
+    binx = np.linspace(-(umax+0.5*u_diff), (umax+0.5*u_diff), nx+1)
+
+    u = uvw[:, 0]
+    v = uvw[:, 1]
+
+    uu = []
+    vv = []
+
+    spw = table('/home/landman/Data/pfb-testing/MS/point_gauss_nb.MS_p0::SPECTRAL_WINDOW')
+    freqs = spw.getcol("CHAN_FREQ").squeeze()
+
+    from africanus.constants import c as lightspeed
+
+    for nu in freqs:
+        normfreq = nu/lightspeed
+        uu.append(u*normfreq)
+        vv.append(v*normfreq)
+
+    uu = np.concatenate(uu)
+    vv = np.concatenate(vv)
+
+    print(uu)
+    print(vv)
+
+
+
+    counts2, _, _ = np.histogram2d(uu, vv, (binx, binx))
+
+    # np.testing.assert_array_almost_equal(counts, counts2, decimal=6)
+
+
+
+
+    # R_nat = Gridder(ms, nx, ny, cell_size, nband=nband, nthreads=1,
+    #                 do_wstacking=1, row_chunks=100000, chan_chunks=8,
+    #                 data_column='DATA', weight_column='WEIGHT',
+    #                 epsilon=1e-4, imaging_weight_column=None,
+    #                 model_column='MODEL_DATA', flag_column='FLAG')
 
     
 
-    dirtyu = R_uni.make_dirty()
-    dirtyn = R_nat.make_dirty()
+    # dirtyu = R_uni.make_dirty()
+    # dirtyn = R_nat.make_dirty()
 
     for b in range(nband):
         plt.figure('u')
-        plt.imshow(dirtyu[b])
+        plt.imshow(counts)
         plt.colorbar()
         plt.figure('n')
-        plt.imshow(dirtyn[b])
+        plt.imshow(counts2)
         plt.colorbar()
         plt.show()
     # nrow = 100000

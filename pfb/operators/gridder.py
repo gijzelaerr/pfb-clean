@@ -172,13 +172,15 @@ class Gridder(object):
 
                 uvw = ds.UVW.data
 
-                count = compute_uniform_counts(uvw, freq, freq_bin_idx, freq_bin_counts, self.nx, self.ny, self.cell, self.cell, np.float32)
+                count = compute_uniform_counts(uvw, freq, freq_bin_idx, freq_bin_counts, 2*self.nx, 2*self.ny, self.cell, self.cell, np.float32)
 
                 counts.append(count) 
             
         counts = dask.compute(counts)[0]
         counts = accumulate_dirty(counts, self.nband, self.band_mapping)
 
+        # return counts
+        
         counts = da.from_array(counts, chunks=(1, -1, -1))
 
         # convert counts to uniform weights
@@ -215,7 +217,7 @@ class Gridder(object):
 
                 uvw = ds.UVW.data
 
-                weights = counts_to_weights(counts, uvw, freq, freq_bin_idx, freq_bin_counts, self.nx, self.ny, self.cell, self.cell, np.float32)
+                weights = counts_to_weights(counts, uvw, freq, freq_bin_idx, freq_bin_counts, 2*self.nx, 2*self.ny, self.cell, self.cell, np.float32)
 
                 # hack to get shape and chunking info
                 data = getattr(ds, self.data_column).data

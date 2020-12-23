@@ -29,25 +29,19 @@ def compute_uniform_counts_wrapper(uvw, freqs, freq_bin_idx, freq_bin_counts, nx
 
 @njit(nogil=True, fastmath=True, cache=True)
 def _compute_uniform_counts(uvw, freqs, freq_bin_idx, freq_bin_counts, nx, ny, cell_size_x, cell_size_y, dtype):
-    # u extent 
-    umax = 1.0/cell_size_x
-    # u cell size
-    umin = 1.0/(nx*cell_size_x)
-    # grid edges
-    ug = -(umax + 0.5*umin) + umin*np.arange(2*nx+2)
-    u_diff = ug[1] - ug[0]
+    # ufreqs
+    # ug = np.fft.fftshift(np.fft.fftfreq(nx, d=cell_size_x))
+    umax = 1/(2*cell_size_x)
+    u_diff = 1/(nx*cell_size_x)
     
-    # v extent
-    vmax = 1.0/cell_size_y
-    # v cell size
-    vmin = 1.0/(ny*cell_size_y)
-    # grid edges
-    vg = -(vmax + 0.5*vmin) + vmin*np.arange(2*ny+2)
-    v_diff = vg[1] - vg[0]
+    # vfreqs
+    # vg = np.fft.fftshift(np.fft.fftfreq(ny, d=cell_size_y))
+    vmax = 1/(2*cell_size_y)
+    v_diff = 1/(ny*cell_size_y)
     
     # initialise array to store counts (the additional axis is to allow chunking over row)
     nband = freq_bin_idx.size
-    counts = np.zeros((1, nband, 2*nx+1, 2*ny+1), dtype=dtype)
+    counts = np.zeros((1, nband, nx, ny), dtype=dtype)
     
     # accumulate counts
     nrow = uvw.shape[0]
@@ -62,10 +56,10 @@ def _compute_uniform_counts(uvw, freqs, freq_bin_idx, freq_bin_counts, nx, ny, c
                 chan_normfreq = normfreqs[c]
                 u_tmp = uvw_row[0] * chan_normfreq
                 v_tmp = uvw_row[1] * chan_normfreq
-                # get u index
-                u_idx = int(np.floor_divide(u_tmp + umax, u_diff)) - 1
+               # get u index
+                u_idx = int(np.round((u_tmp + umax)/u_diff))
                 # get v index
-                v_idx = int(np.floor_divide(v_tmp + vmax, v_diff)) - 1
+                v_idx = int(np.round((v_tmp + vmax)/v_diff))
                 counts[0, b, u_idx, v_idx] += 1
     return counts
 
@@ -95,21 +89,15 @@ def counts_to_weights_wrapper(counts, uvw, freqs, freq_bin_idx, freq_bin_counts,
 
 @njit(nogil=True, fastmath=True, cache=True, parallel=True)
 def _counts_to_weights(counts, uvw, freqs, freq_bin_idx, freq_bin_counts, nx, ny, cell_size_x, cell_size_y, dtype):
-    # u extent 
-    umax = 1.0/cell_size_x
-    # u cell size
-    umin = 1.0/(nx*cell_size_x)
-    # grid edges
-    ug = -(umax + 0.5*umin) + umin*np.arange(2*nx+2)
-    u_diff = ug[1] - ug[0]
+    # ufreqs
+    # ug = np.fft.fftshift(np.fft.fftfreq(nx, d=cell_size_x))
+    umax = 1/(2*cell_size_x)
+    u_diff = 1/(nx*cell_size_x)
     
-    # v extent
-    vmax = 1.0/cell_size_y
-    # v cell size
-    vmin = 1.0/(ny*cell_size_y)
-    # grid edges
-    vg = -(vmax + 0.5*vmin) + vmin*np.arange(2*ny+2)
-    v_diff = vg[1] - vg[0]
+    # vfreqs
+    # vg = np.fft.fftshift(np.fft.fftfreq(ny, d=cell_size_y))
+    vmax = 1/(2*cell_size_y)
+    v_diff = 1/(ny*cell_size_y)
 
     # initialise array to store counts (the additional axis is to allow chunking over row)
     nband = freq_bin_idx.size
@@ -133,9 +121,9 @@ def _counts_to_weights(counts, uvw, freqs, freq_bin_idx, freq_bin_counts, nx, ny
                 u_tmp = uvw_row[0] * chan_normfreq
                 v_tmp = uvw_row[1] * chan_normfreq
                 # get u index
-                u_idx = int(np.floor_divide(u_tmp + umax, u_diff)) - 1
+                u_idx = int(np.round((u_tmp + umax)/u_diff))
                 # get v index
-                v_idx = int(np.floor_divide(v_tmp + vmax, v_diff)) - 1
+                v_idx = int(np.round((v_tmp + vmax)/v_diff))
                 if counts[b, u_idx, v_idx]:
                     weights[r, c] = 1.0/counts[b, u_idx, v_idx]
     return weights

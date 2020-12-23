@@ -4,6 +4,7 @@
 
 import numpy as np
 from daskms import xds_from_ms, xds_from_table
+from numpy.lib.npyio import save
 from scipy.linalg import norm
 import dask
 import dask.array as da
@@ -86,6 +87,8 @@ def create_parser():
                    help="Tolerance for cg updates")
     p.add_argument("--cgmaxit", type=int, default=100,
                    help="Maximum number of iterations for the cg updates")
+    p.add_argument("--cgminit", type=int, default=10,
+                   help="Minimum number of iterations for the cg updates")
     p.add_argument("--cgverbose", type=int, default=1,
                    help="Verbosity of cg method used to invert Hess. Set to 1 or 2 for debugging.")
     p.add_argument("--pmtol", type=float, default=1e-4,
@@ -152,19 +155,37 @@ def main(args):
 
     print("Image size set to (%i, %i, %i)"%(args.nband, args.nx, args.ny))
 
-    # init gridder
+    # init naturally weighted gridder
     R = Gridder(args.ms, args.nx, args.ny, args.cell_size, nband=args.nband, nthreads=args.nthreads,
                 do_wstacking=args.do_wstacking, row_chunks=args.row_chunks, chan_chunks=args.chan_chunks, optimise_chunks=True,
-                data_column=args.data_column, weight_column=args.weight_column, imaging_weight_column=args.imaging_weight_column,
+                data_column=args.data_column, weight_column=args.weight_column, imaging_weight_column=None,
                 model_column=args.model_column, flag_column=args.flag_column)
     freq_out = R.freq_out
     radec = R.radec
+
+    # init uniformly weighted MFS gridder
+    Ru = Gridder(args.ms, args.nx, args.ny, args.cell_size, nband=1, nthreads=args.nthreads,
+                do_wstacking=args.do_wstacking, row_chunks=args.row_chunks, chan_chunks=args.chan_chunks, optimise_chunks=True,
+                data_column=args.data_column, weight_column=args.weight_column, imaging_weight_column=args.imaging_weight_column,
+                model_column=args.model_column, flag_column=args.flag_column)
+
+    # make uniform weights
+    Ru.compute_weights()
+
+    dirtyu = Ru.make_dirty()
+    psfu = Ru.make_psf()
+    psfu_max = np.amax(psfu.reshape(1, 4*args.nx*args.ny), axis=1)
+    psfu /= psfu_max
+    dirtyu /= psfu_max
 
     # get headers
     hdr = set_wcs(args.cell_size/3600, args.cell_size/3600, args.nx, args.ny, radec, freq_out)
     hdr_mfs = set_wcs(args.cell_size/3600, args.cell_size/3600, args.nx, args.ny, radec, np.mean(freq_out))
     hdr_psf = set_wcs(args.cell_size/3600, args.cell_size/3600, 2*args.nx, 2*args.ny, radec, freq_out)
     hdr_psf_mfs = set_wcs(args.cell_size/3600, args.cell_size/3600, 2*args.nx, 2*args.ny, radec, np.mean(freq_out))
+
+    save_fits(args.outfile + '_uniform_psf.fits', psfu, hdr_psf_mfs)
+    save_fits(args.outfile + '_uniform_dirty.fits', dirtyu, hdr_mfs)
     
     # psf
     if args.psf is not None:
@@ -202,8 +223,7 @@ def main(args):
     save_fits(args.outfile + '_dirty_mfs.fits', dirty_mfs, hdr_mfs)       
 
     psf_mfs = np.sum(psf_array, axis=0)/wsum
-    save_fits(args.outfile + '_psf_mfs.fits', psf_mfs[args.nx//2:3*args.nx//2, 
-                                                      args.ny//2:3*args.ny//2], hdr_mfs)
+    save_fits(args.outfile + '_psf_mfs.fits', psf_mfs, hdr_psf_mfs)
     
     # mask
     if args.mask is not None:
@@ -218,7 +238,7 @@ def main(args):
         if pmask.shape != (args.nx, args.ny):
             raise ValueError("Mask has incorrect shape")
     else:
-        pmask = None
+        pmask = np.zeros((args.nx, args.ny), dtype=dirty.dtype)
 
     # Reporting    
     print("At iteration 0 peak of residual is %f and rms is %f" % (rmax, rms))
@@ -242,11 +262,12 @@ def main(args):
     eps = 1.0
     i = 0
     residual = dirty.copy()
+    residualu = dirtyu.copy()
     model = np.zeros(dirty.shape, dtype=dirty.dtype)
     for i in range(1, args.maxit):
         # find point source candidates
         if args.do_clean:
-            model_tmp = hogbom(mask[None] * residual/psf_max[:, None, None], psf_array/psf_max[:, None, None], gamma=args.cgamma, pf=args.peak_factor)
+            model_tmp = hogbom(mask[None] * residualu, psfu, gamma=args.cgamma, pf=args.peak_factor)
             phi.update_locs(np.any(model_tmp, axis=0))
             # get new spectral norm
             L = power_method(hess, model.shape, tol=args.pmtol, maxit=args.pmmaxit)
@@ -254,9 +275,9 @@ def main(args):
             model_tmp = np.zeros_like(residual, dtype=residual.dtype)
         
         # solve for beta updates
-        x = pcg(hess, phi.hdot(residual), phi.hdot(model_tmp), 
+        x = pcg(hess, phi.hdot(residual), phi.hdot(np.zeros_like(residual, dtype=residual.dtype)), 
                 M=lambda x: x * args.sig_l2**2, tol=args.cgtol,
-                maxit=args.cgmaxit, verbosity=args.cgverbose)
+                maxit=args.cgmaxit, minit=args.cgminit, verbosity=args.cgverbose)
 
         modelp = model.copy()
         model += args.gamma * x
@@ -272,6 +293,8 @@ def main(args):
 
         # get residual
         residual = R.make_residual(model)/psf_max_mean
+        model_mfs = np.mean(model, axis=0, keepdims=True)
+        residualu = Ru.make_residual(model_mfs)/psfu_max
        
         # check stopping criteria
         residual_mfs = np.sum(residual, axis=0)/wsum 
@@ -289,6 +312,9 @@ def main(args):
             save_fits(args.outfile + str(i) + '_residual.fits', residual/psf_max[:, None, None], hdr)
 
             save_fits(args.outfile + str(i) + '_residual_mfs.fits', residual_mfs, hdr_mfs)
+
+            save_fits(args.outfile + str(i) + '_uniform_residual_mfs.fits', residualu, hdr_mfs)
+
 
         print("At iteration %i peak of residual is %f, rms is %f, current eps is %f" % (i, rmax, rms, eps))
 
