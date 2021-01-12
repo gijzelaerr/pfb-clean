@@ -26,11 +26,11 @@ def create_parser():
                    "If None will simply apply to a column of ones")
     p.add_argument("--readcol", type=str, default='DATA',
                    help="Column to read in. Used to get shape of output.")
-    p.add_argument("--Kpath", tye=str, default=None,
+    p.add_argument("--Kpath", type=str, default=None,
                    help="Path to K gain table")
-    p.add_argument("--Gpath", tye=str, default=None,
+    p.add_argument("--Gpath", type=str, default=None,
                    help="Path to G gain table")
-    p.add_argument("--Bpath", tye=str, default=None,
+    p.add_argument("--Bpath", type=str, default=None,
                    help="Path to B gain table")
     p.add_argument("--nthreads", type=int, default=0)
     p.add_argument("--utimes_per_chunk",  default=32, type=int,
