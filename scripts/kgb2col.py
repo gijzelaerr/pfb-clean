@@ -106,7 +106,7 @@ def main(args):
     # construct single phenomenalogical gain term for MS
     ms = table(args.ms)
     time = ms.getcol('TIME')
-    utime = np.unique(t)
+    utime = np.unique(time)
     ntime = utime.size
     ant1max = ms.getcol('ANTENNA1').max()
     ant2max = ms.getcol('ANTENNA2').max()
@@ -117,7 +117,6 @@ def main(args):
     jones = np.zeros((ntime, nant, nchan, ndir, ncorr), dtype=np.complex128)
     for p in range(nant):
         for c in range(ncorr):
-            print(p, c)
             jones[:, p, :, 0, c] = gain_func(utime, freq, Kdict[p][c], Bdict[p][c], Gdict[p][c])
 
     # apply gains
