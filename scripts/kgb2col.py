@@ -133,39 +133,46 @@ def main(args):
 
     xds = xds_from_ms(args.ms, group_cols=('FIELD_ID', 'DATA_DESC_ID'), columns=cols, chunks={'row':row_chunks, 'chan':args.chan_chunks})
 
-    data = getattr(xds, args.readcol)
-    nrow, nchan, ncorr = data.shape
+    writes = []
+    out_data = []
+    for ds in xds:
+
+        data = getattr(ds, args.readcol)
+        nrow, nchan, ncorr = data.shape
+        
+        # reshape the correlation axis if required
+        if ncorr > 2:
+            data = data.reshape(nrow, nchan, 2, 2)
+            reshape_vis = True
+        else:
+            reshape_vis = False
+
+        if args.applycol is not None:
+            model = getattr(ds, args.applycol)
+        else:
+            model = da.ones_like(data, chunks=data.chunks)
+
+        # add direction axis and reshape if required
+        if reshape_vis:
+            model = model.reshape(nrow, nchan, 1, 2, 2)
+        else:
+            model = model.reshape(nrow, nchan, 1, 2)
+
+        ant1 = xds.ANTENNA1.data
+        ant2 = xds.ANTENNA2.data
+
+        corrupted_data = corrupt_vis(tbin_idx, tbin_counts, ant1, ant2, jones, model)
+
+        if reshape_vis:
+            corrupted_data = corrupted_data.reshape(nrow, nchan, ncorr)
+
+        out_ds = ds.assign(**{args.writecol: (("row", "chan", "corr"), corrupted_data)})
+        out_data.append(out_ds)
+    writes.append(xds_to_table(out_data, args.ms, [args.writecol]))
     
-    # reshape the correlation axis if required
-    if ncorr > 2:
-        data = data.reshape(nrow, nchan, 2, 2)
-        reshape_vis = True
-    else:
-        reshape_vis = False
-
-    if args.applycol is not None:
-        model = getattr(args.applycol)
-    else:
-        model = da.ones_like(data, chunks=data.chunks)
-
-    # add direction axis and reshape if required
-    if reshape_vis:
-        model = model.reshape(nrow, nchan, 1, 2, 2)
-    else:
-        model = model.reshape(nrow, nchan, 1, 2)
-
-    ant1 = xds.ANTENNA1.data
-    ant2 = xds.ANTENNA2.data
-
-    corrupted_data = corrupt_vis(tbin_idx, tbin_counts, ant1, ant2, jones, model)
-
-    if reshape_vis:
-        corrupted_data = corrupted_data.reshape(nrow, nchan, ncorr)
-
-    xds = xds.assign(**{args.writecol: (("row", "chan", "corr"), corrupted_data)})
-    write = xds_to_table(xds, args.ms, [args.writecol])
+    
     with ProgressBar():
-        write.compute()
+        dask.compute(writes)
 
 
 
