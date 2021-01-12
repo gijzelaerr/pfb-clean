@@ -137,7 +137,7 @@ def main(args):
     out_data = []
     for ds in xds:
 
-        data = getattr(ds, args.readcol)
+        data = getattr(ds, args.readcol).data
         nrow, nchan, ncorr = data.shape
         
         # reshape the correlation axis if required
