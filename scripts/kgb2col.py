@@ -110,7 +110,7 @@ def main(args):
     ntime = utime.size
     ant1max = ms.getcol('ANTENNA1').max()
     ant2max = ms.getcol('ANTENNA2').max()
-    nant = np.maximum(ant1max, ant2max)
+    nant = np.maximum(ant1max, ant2max) + 1
     ms.close()  
     freq = table(args.ms+'::SPECTRAL_WINDOW').getcol('CHAN_FREQ').squeeze()
     nchan = freq.size
@@ -158,8 +158,8 @@ def main(args):
         else:
             model = model.reshape(nrow, nchan, 1, 2)
 
-        ant1 = xds.ANTENNA1.data
-        ant2 = xds.ANTENNA2.data
+        ant1 = ds.ANTENNA1.data
+        ant2 = ds.ANTENNA2.data
 
         corrupted_data = corrupt_vis(tbin_idx, tbin_counts, ant1, ant2, jones, model)
 
