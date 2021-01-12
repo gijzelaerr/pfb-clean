@@ -127,7 +127,7 @@ def main(args):
 
     jones = da.from_array(jones, chunks=(args.utimes_per_chunk, -1, args.chan_chunks, -1, -1))
 
-    cols = (args.readcol,)
+    cols = (args.readcol,'ANTENNA1','ANTENNA2')
     if args.applycol is not None:
         cols += (args.applycol,)
 
