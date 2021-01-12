@@ -41,7 +41,7 @@ def create_parser():
 
 
 def gain_func(t, nu, Ko, Bo, Go):
-    K = np.exp(1.0j*Ko['delay'](t)[:, None]*nu[None, :])
+    K = np.exp(1e-9j*Ko['delay'](t)[:, None]*nu[None, :])
     B = Bo['amp'](nu)[None, :]*np.exp(Bo['phase'](nu)[None, :]*1.0j)
     G = Go['amp'](t)[:, None]*np.exp(Go['phase'](t)[:, None]*1.0j)
     return K * G * B
