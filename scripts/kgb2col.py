@@ -179,8 +179,9 @@ if __name__=="__main__":
         import multiprocessing
         args.nthreads = multiprocessing.cpu_count()
 
-    if not isinstance(args.ms, list):
-        args.ms = [args.ms]
+    if isinstance(args.ms, list):
+        print('Can only do one MS at a time')
+        args.ms = args.ms[0]
 
     GD = vars(args)
     print('Input Options:')
