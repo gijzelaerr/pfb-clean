@@ -148,7 +148,7 @@ def main(args):
             reshape_vis = False
 
         if args.applycol is not None:
-            model = getattr(ds, args.applycol)
+            model = getattr(ds, args.applycol).data
         else:
             model = da.ones_like(data, chunks=data.chunks)
 
