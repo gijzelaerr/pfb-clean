@@ -81,11 +81,11 @@ def main(args):
             Gdict[p].setdefault(corr, {})
             amp = np.abs(G[rows, 0, corr])
             Gdict[p][corr]['amp'] = interp1d(t[rows], amp, kind='linear', fill_value='extrapolate')
-            phase = np.angle(G[rows, 0, corr])
+            phase = np.unwrap(np.angle(G[rows, 0, corr]))
             Gdict[p][corr]['phase'] = interp1d(t[rows], phase, kind='linear', fill_value='extrapolate')
 
     
-    # interp B    
+    # interp B
     Btab = table(args.Bpath)
     B = Btab.getcol('CPARAM')
     freq = table(args.Bpath+'::SPECTRAL_WINDOW').getcol('CHAN_FREQ').squeeze()
@@ -99,7 +99,7 @@ def main(args):
             Bdict[p].setdefault(corr, {})
             amp = np.abs(B[rows, :, corr])
             Bdict[p][corr]['amp'] = interp1d(freq, amp, kind='linear', fill_value='extrapolate')
-            phase = np.angle(B[p, :, corr])
+            phase = np.unwrap(np.angle(B[p, :, corr]))
             Bdict[p][corr]['phase'] = interp1d(freq, phase, kind='linear', fill_value='extrapolate')
     
     
