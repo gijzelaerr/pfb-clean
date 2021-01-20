@@ -41,7 +41,7 @@ def create_parser():
 
 
 def gain_func(t, nu, Ko, Bo, Go):
-    K = np.exp(1e-9j*Ko['delay'](t)[:, None]*nu[None, :])
+    K = np.exp(-1e-9j*Ko['delay'](t)[:, None]*nu[None, :])
     B = Bo['amp'](nu)[None, :]*np.exp(Bo['phase'](nu)[None, :]*1.0j)
     G = Go['amp'](t)[:, None]*np.exp(Go['phase'](t)[:, None]*1.0j)
     return K * G * B
@@ -54,6 +54,7 @@ def main(args):
     K = Ktab.getcol('FPARAM')
     t = Ktab.getcol('TIME')    
     ant1 = Ktab.getcol('ANTENNA1')
+    flag = Ktab.getcol('FLAG')
     Ktab.close()
     ndir = 1
     ncorr = 2
@@ -62,9 +63,12 @@ def main(args):
         rows = np.argwhere(ant1==p).squeeze()
         Kdict.setdefault(p, {})
         for corr in range(ncorr):
+            # get valid rows
+            idx_valid = np.argwhere(~flag[rows, 0, corr]).squeeze()
+            rows_valid = rows[idx_valid]
             Kdict[p].setdefault(corr, {})
-            delay = K[rows, 0, corr]
-            Kdict[p][corr]['delay'] = interp1d(t[rows], delay, kind='linear', fill_value='extrapolate')
+            delay = K[rows_valid, 0, corr]
+            Kdict[p][corr]['delay'] = interp1d(t[rows_valid], delay, kind='linear', fill_value='extrapolate')
 
 
     # interp G    
@@ -72,17 +76,21 @@ def main(args):
     G = Gtab.getcol('CPARAM')
     t = Gtab.getcol('TIME')    
     ant1 = Gtab.getcol('ANTENNA1')
+    flag = Gtab.getcol('FLAG')
     Gtab.close()
     Gdict = {}
     for p in range(ant1.max()+1):
         rows = np.argwhere(ant1==p).squeeze()
         Gdict.setdefault(p, {})
         for corr in range(ncorr):
+            # get valid rows
+            idx_valid = np.argwhere(~flag[rows, 0, corr]).squeeze()
+            rows_valid = rows[idx_valid]
             Gdict[p].setdefault(corr, {})
-            amp = np.abs(G[rows, 0, corr])
-            Gdict[p][corr]['amp'] = interp1d(t[rows], amp, kind='linear', fill_value='extrapolate')
-            phase = np.unwrap(np.angle(G[rows, 0, corr]))
-            Gdict[p][corr]['phase'] = interp1d(t[rows], phase, kind='linear', fill_value='extrapolate')
+            amp = np.abs(G[rows_valid, 0, corr])
+            Gdict[p][corr]['amp'] = interp1d(t[rows_valid], amp, kind='linear', fill_value='extrapolate')
+            phase = np.unwrap(np.angle(G[rows_valid, 0, corr]))
+            Gdict[p][corr]['phase'] = interp1d(t[rows_valid], phase, kind='linear', fill_value='extrapolate')
 
     
     # interp B
@@ -90,17 +98,22 @@ def main(args):
     B = Btab.getcol('CPARAM')
     freq = table(args.Bpath+'::SPECTRAL_WINDOW').getcol('CHAN_FREQ').squeeze()
     ant1 = Btab.getcol('ANTENNA1')
+    flag = Btab.getcol('FLAG')
     Btab.close()
     Bdict = {}
     for p in range(ant1.max()+1):
         rows = np.argwhere(ant1==p).squeeze()
+        if rows.size > 1:
+            raise ValueError("Only single global bandpass currently supported")
         Bdict.setdefault(p, {})
         for corr in range(ncorr):
+            # get valid chans
+            idx_valid = np.argwhere(~flag[p, :, corr]).squeeze()
             Bdict[p].setdefault(corr, {})
-            amp = np.abs(B[rows, :, corr])
-            Bdict[p][corr]['amp'] = interp1d(freq, amp, kind='linear', fill_value='extrapolate')
-            phase = np.unwrap(np.angle(B[p, :, corr]))
-            Bdict[p][corr]['phase'] = interp1d(freq, phase, kind='linear', fill_value='extrapolate')
+            amp = np.abs(B[p, idx_valid, corr])
+            Bdict[p][corr]['amp'] = interp1d(freq[idx_valid], amp, kind='linear', fill_value='extrapolate')
+            phase = np.unwrap(np.angle(B[p, idx_valid, corr]))
+            Bdict[p][corr]['phase'] = interp1d(freq[idx_valid], phase, kind='linear', fill_value='extrapolate')
     
     
     # construct single phenomenalogical gain term for MS
